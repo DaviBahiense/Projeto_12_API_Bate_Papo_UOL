@@ -10,6 +10,12 @@ dotenv.config();
 const participantsModel = joi.object({
     name: joi.string().required()
 })
+const messageModel = joi.object({
+    to: joi.string().required(),
+    text: joi.string().required(),
+    type:joi.alternatives().try(joi.string().valid('message'), joi.string().valid('message')),
+    from: joi.string().required()
+})
 
 const mongoClient = new MongoClient(process.env.MONGO_URI);
 let db;
@@ -25,47 +31,85 @@ app.get('/participants', async (req, res) =>{
     try {
         const participants = await db.collection('participants').find().toArray()
         res.send(participants)
+        mongoClient.close()
+
     } catch (error) {
         res.sendStatus(500)
+        mongoClient.close()
     }
 })
 
 app.post('/participants', async (req, res) =>{
 
-    const validation = participantsModel.validate(req.body);
-
+    const validation = participantsModel.validate(req.body)
     if (validation.error || req.body.name === "") {
-        res.sendStatus(422);
+        res.sendStatus(422)
         return
     }
 
     try {
         const participant = await db.collection('participants').findOne({name : req.body.name})
         if ( participant ) {
-            res.sendStatus(409);
+            res.sendStatus(409)
+            mongoClient.close()
             return  
         }
         const receiveObj = req.body
         await db.collection('participants').insertOne({...receiveObj, lastStatus: Date.now()})
-        await db.collection('mensage').insertOne({from: receiveObj, to: 'Todos', text: 'entra na sala...', type: 'status', time: dayjs(Date.now()).format('hh:mm:ss')})
-        res.sendStatus(201) 
+        await db.collection('mensages').insertOne({
+            from: receiveObj, 
+            to: 'Todos', 
+            text: 'entra na sala...', 
+            type: 'status', 
+            time: dayjs(Date.now()).format('hh:mm:ss')
+        })
+        res.sendStatus(201)
+        mongoClient.close()  
+
     } catch (error) {
-        res.sendStatus(500);
+        res.sendStatus(500)
+        mongoClient.close()
     }
 })
 
 app.delete('/participants/:id', async (req, res) => {
-    const id = req.params.id;
+    const id = req.params.id
   
     try {
       await db.collection('participants').deleteOne({ _id: new ObjectId(id) })
-  
       res.sendStatus(200);
+      mongoClient.close()
+
     } catch (error) {
-      console.error(error);
       res.sendStatus(500);
+      mongoClient.close()
     }
   });
+
+app.post('/messages', async (req, res) => {
+
+    const bodyMsg = req.body
+    const validation = messageModel.validate(bodyMsg)
+    const fromDuplicated = await db.collection('messages').findOne({ from:  req.headers.user })
+    console.log(fromDuplicated)
+    if (validation.error || fromDuplicated) {
+        res.sendStatus(422)
+        return
+    }
+    try {
+        await db.collection('messages').insertOne({
+            ...bodyMsg,
+            from: from,
+            time: dayjs(Date.now()).format('hh:mm:ss')
+        })
+        res.sendStatus(201)
+        mongoClient.close()
+
+    } catch (error) {
+        res.sendStatus(500);
+        mongoClient.close()
+    }
+})
   
 
 app.listen(5000, () => {
