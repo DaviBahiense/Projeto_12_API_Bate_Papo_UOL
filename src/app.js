@@ -14,7 +14,7 @@ const messageModel = joi.object({
     to: joi.string().required(),
     text: joi.string().required(),
     type:joi.alternatives().try(joi.string().valid('message'), joi.string().valid('message')),
-    from: joi.string().required()
+    from: joi.string()
 })
 
 const mongoClient = new MongoClient(process.env.MONGO_URI);
@@ -29,7 +29,7 @@ app.use(cors());
 
 app.get('/participants', async (req, res) =>{
     try {
-        const participants = await db.collection('participants').find().toArray()
+        const participants = await db.collection('participants').find({}).toArray()
         res.send(participants)
         mongoClient.close()
 
@@ -86,11 +86,35 @@ app.delete('/participants/:id', async (req, res) => {
     }
   });
 
+app.get('/messages', async (req,res) => {
+    const user = req.headers.user
+    const numberMsg = req.query.limit
+
+    try {
+        const msgs = await db.collection('messages').find(
+            { $or: [{to: 'Todos'}, {type: 'message'}, {from: user}, { to: user}]  }
+            ).toArray
+
+        if (msgs.lenght >= numberMsg) {
+            const screenMsg = msgs.slice(-numberMsg)
+            res.send(screenMsg)
+            mongoClient.close
+        }
+    res.send(msgs)
+    mongoClient.close
+        
+    } catch (error) {
+        res.sendStatus(500);
+        mongoClient.close()
+    }
+})
+
 app.post('/messages', async (req, res) => {
 
     const bodyMsg = req.body
     const validation = messageModel.validate(bodyMsg)
     const fromDuplicated = await db.collection('messages').findOne({ from:  req.headers.user })
+    const from = req.headers.user
     console.log(fromDuplicated)
     if (validation.error || fromDuplicated) {
         res.sendStatus(422)
